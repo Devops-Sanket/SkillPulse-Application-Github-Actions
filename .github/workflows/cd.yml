@@ -1,0 +1,32 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            if [ ! -d ~/SkillPulse-Application-Github-Actions ]; then
+              git clone ${{ github.server_url }}/${{ github.repository }}.git ~/SkillPulse-Application-Github-Actions
+            fi
+            cd ~/SkillPulse-Application-Github-Actions
+            git pull origin main
+            if [ ! -f .env ]; then
+              echo "ERROR: ~/SkillPulse-Application-Github-Actions/.env is missing. Create it once with DOCKERHUB_USERNAME and DB credentials."
+              exit 1
+            fi
+            docker compose pull
+            docker compose up -d
+            docker image prune -f
+
